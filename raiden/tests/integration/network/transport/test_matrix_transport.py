@@ -20,7 +20,7 @@ from raiden.exceptions import InsufficientFunds
 from raiden.messages import Delivered, PFSFeeUpdate, Processed, SecretRequest, ToDevice
 from raiden.network.transport.matrix import AddressReachability, MatrixTransport, _RetryQueue
 from raiden.network.transport.matrix.client import Room
-from raiden.network.transport.matrix.utils import make_room_alias
+from raiden.network.transport.matrix.utils import UserAddressManager, make_room_alias
 from raiden.services import (
     update_monitoring_service_from_balance_proof,
     update_path_finding_service_from_balance_proof,
@@ -34,6 +34,7 @@ from raiden.transfer.identifiers import CANONICAL_IDENTIFIER_GLOBAL_QUEUE, Queue
 from raiden.transfer.state_change import ActionChannelClose, ActionUpdateTransportAuthData
 from raiden.utils.signer import LocalSigner
 from raiden.utils.typing import Address, List, Optional, Union
+from storage.sqlite import MatrixStorage
 
 USERID0 = "@Arthur:RestaurantAtTheEndOfTheUniverse"
 USERID1 = "@Alice:Wonderland"
@@ -1150,7 +1151,7 @@ def test_send_to_device(matrix_transports):
 
 @pytest.mark.parametrize("matrix_server_count", [1])
 @pytest.mark.parametrize("number_of_transports", [2])
-def test_matrix_userid_persistence(matrix_transports):
+def test_matrix_userid_persistence(matrix_transports, tmp_path):
     transport0, transport1 = matrix_transports
     received_messages0 = set()
     received_messages1 = set()
@@ -1158,12 +1159,15 @@ def test_matrix_userid_persistence(matrix_transports):
     message_handler0 = MessageHandler(received_messages0)
     message_handler1 = MessageHandler(received_messages1)
     raiden_service0 = MockRaidenService(message_handler0)
-    raiden_service1 = MockRaidenService(message_handler1)
+
+    raiden_service1 = MockRaidenService(message_handler1, tmp_path=tmp_path)
     raiden_service2 = MockRaidenService(message_handler0)
     raiden_service3 = MockRaidenService(message_handler1)
 
     transport0.start(raiden_service0, message_handler0, "")
-    transport1.start(raiden_service1, message_handler1, "")
+    transport1.start(
+        raiden_service1, message_handler1, "", MatrixStorage(raiden_service1.wal.storage)
+    )
 
     transport1.start_health_check(raiden_service0.address)
     transport1.start_health_check(raiden_service2.address)
